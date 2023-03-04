@@ -1,0 +1,156 @@
+#include "IBackup.ahk"
+
+class RegistryFileBackup extends IBackup
+{
+  static HourTimeFormat := { 12: "tt'_'hhmmss", 24: "HHmmss"}
+
+  backup := Map()
+
+  __New(keyNameFormat, fileNameFormat, hourTimeFormat, guidToNameCallback)
+  {
+    this.__ValidateHourTimeFormat(hourTimeFormat)
+    this.__SetBackupFileName(fileNameFormat, hourTimeFormat)
+
+    this.keyNameFormat := keyNameFormat
+    this.GuidToNameCallback := guidToNameCallback
+  }
+
+  ; ============================================================
+  ; Public methods
+  ; ============================================================
+
+    _Create(uniqueBackupId, valueToBackup)
+    {
+      ; Place every backup in the same .reg file
+
+      registryKeyName := Format(this.keyNameFormat, uniqueBackupId)
+      
+      if (!fileexist(this.backupFileName))
+      {
+        fileappend
+        (
+          "Windows Registry Editor Version 5.00
+          
+          ; Original registry values below
+          
+          "
+        ), this.backupFileName, "`n"
+      }
+
+      existingPreviewHandlerGuid := regread(registryKeyName, , 0)
+
+      fileappend (existingPreviewHandlerGuid ?
+      (
+        "; " this.GuidToNameCallback.Bind(existingPreviewHandlerGuid)() "
+        [" registryKeyName "]
+        @=`"" existingPreviewHandlerGuid "`"
+        "
+      ) :
+      (
+        "[-" registryKeyName "]
+        "
+      )), this.backupFileName, "`n"
+
+      this.backup[uniqueBackupId] := a_scriptdir "\" this.backupFileName
+    }
+
+    _Retrieve(uniqueBackupId)
+    {
+      if (!this._IsAlreadyCreated(uniqueBackupId))
+      {
+        this.__ThrowNonExistent(uniqueBackupId)
+      }
+
+      return this.backup[uniqueBackupId]
+    }
+
+    _Delete(uniqueBackupId)
+    {
+      if (!this._IsAlreadyCreated(uniqueBackupId))
+      {
+        this.__ThrowNonExistent(uniqueBackupId)
+      }
+
+      registryFileFullPath := this.backup[uniqueBackupId]
+
+      if (fileexist(registryFileFullPath))
+      {
+        try
+        {
+          filedelete registryFileFullPath
+        }
+        catch Error as e
+        {
+          msgbox Format("Error deleting backup file {1}: {2}", registryFileFullPath, e.Message)
+        }
+      }
+
+      this.backup.Delete(uniqueBackupId)
+    }
+
+    _IsAlreadyCreated(uniqueBackupId) => this.backup.Has(uniqueBackupId)
+
+  ; ============================================================
+  ; Private methods
+  ; ============================================================
+
+    ; Determine timestamp format used in the file name
+    __SetBackupFileName(filenameFormat, hourTimeFormat)
+    {
+      static LOCALE_NAME_USER_DEFAULT := 0
+
+      switch (hourTimeFormat)
+      {
+        case RegistryFileBackup.HourTimeFormat.12:
+          ; When 12-hour timestamp format is requested, better use INVARIANT instead 
+          ; of current user locale, because if 24-hour format is in effect, "tt" 
+          ; will (likely) never translate into "AM"/"PM" but be left blank instead.
+          LOCALE_NAME_INVARIANT := ""
+        case RegistryFileBackup.HourTimeFormat.24:
+        default:
+          throw ValueError("Unsupported time format.", -3, hourTimeFormat)
+      }
+
+      charCount := 0
+      currentTime := ""
+      loop 2
+      {
+        if (a_index == 2)
+        {
+          varsetstrcapacity(&currentTime, charCount)
+        }        
+
+        shouldUse12HourFormat := hourTimeFormat == RegistryFileBackup.HourTimeFormat.12 
+            && (charCount == 0 || 
+                charCount == strlen(strreplace(RegistryFileBackup.HourTimeFormat.12, "'")) + 1)
+
+        ; 1st call: Get required min length for storing the time format string
+        ; 2nd call: Get time format string
+        charCount := dllcall("GetTimeFormatEx", 
+            isset(LOCALE_NAME_INVARIANT) ? "str" : "ptr", 
+                LOCALE_NAME_INVARIANT ?? LOCALE_NAME_USER_DEFAULT,
+            "int", 0,
+            "ptr", 0,
+            "str", RegistryFileBackup.HourTimeFormat.%shouldUse12HourFormat ? 12 : 24%,
+            "str", currentTime,
+            "int", charCount)
+      }
+
+      currentDate := formattime(unset, "yyyyMMdd")
+
+      this.backupFileName := Format(filenameFormat, currentDate "_" currentTime)
+    }
+
+    __ValidateHourTimeFormat(hourTimeFormat)
+    {
+      for , supportedHourTimeFormat in RegistryFileBackup.HourTimeFormat.OwnProps()
+      {
+        if (hourTimeFormat == supportedHourTimeFormat)
+        {
+          return
+        }
+      }
+
+      throw ValueError("Unknown HourTimeFormat value.", -3, hourTimeFormat)
+    }
+}
