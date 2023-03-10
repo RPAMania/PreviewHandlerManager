@@ -33,7 +33,7 @@
 
 #requires autohotkey 2.0-beta+
 #singleinstance ignore
-#include "PreviewHandlerManager.ahk"
+#include "lib\PreviewHandlerManager.ahk"
 
 if (!A_IsAdmin) { ;http://ahkscript.org/docs/Variables.htm#IsAdmin
   Run "*RunAs `"" A_ScriptFullPath "`""  ; Requires v1.0.92.01+
