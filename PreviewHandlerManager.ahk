@@ -1,7 +1,7 @@
-#include "GUIControlEventParamInjector.ahk"
+#include "FileExtensionParamSanitizer.ahk"
 #include "BackupManager.ahk"
 
-class PreviewHandlerManager extends GUIControlEventParamInjector
+class PreviewHandlerManager extends FileExtensionParamSanitizer
 {
   Show() => this.gui.Show()
   Hide() => this.gui.Hide()
@@ -9,10 +9,15 @@ class PreviewHandlerManager extends GUIControlEventParamInjector
   static registryKeyNameFormat := "HKEY_CLASSES_ROOT\.{1}\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}"
       ,  noPreviewHandlerText := "None"
 
-  __New()
+  __Initialize()
   {
     static guiControlWidth := 320,
            guiButton := { w: 100, h: 24, sideMargin: 14 }
+
+    if (this.HasOwnProp("gui"))
+    {
+      return
+    }
 
     this.__UpdatePreviewHandlersFromRegistry()
 
@@ -69,7 +74,7 @@ class PreviewHandlerManager extends GUIControlEventParamInjector
   ; GUI methods
   ; ============================================================
 
-    _OnChangeExtension(fileExtension)
+    OnChangeExtension(fileExtension)
     {
       ; Validation rule: optional dot followed by some word char(s)
       isValidExtension := fileExtension ~= "^\w+$"
@@ -108,7 +113,7 @@ class PreviewHandlerManager extends GUIControlEventParamInjector
           currentPreviewHandlerGuid !== this.__SelectedPreviewHandlerGuid
     }
 
-    _OnSetPreviewHandler(fileExtension)
+    OnSetPreviewHandler(fileExtension)
     {
       registryKeyName := Format(PreviewHandlerManager.registryKeyNameFormat, fileExtension)
 
@@ -154,7 +159,7 @@ class PreviewHandlerManager extends GUIControlEventParamInjector
       )
     }
 
-    _OnRestorePreviewHandler(fileExtension)
+    OnRestorePreviewHandler(fileExtension)
     {
       originalPreviewHandlerGuid := this.__RestoreBackup(fileExtension)
       
@@ -179,7 +184,7 @@ class PreviewHandlerManager extends GUIControlEventParamInjector
       ))
     }
 
-    _OnToggleCreateBackups(fileExtension)
+    OnToggleCreateBackups(fileExtension)
     {
       currentPreviewHandlerGuid := regread(
           Format(PreviewHandlerManager.registryKeyNameFormat, fileExtension), , 0)

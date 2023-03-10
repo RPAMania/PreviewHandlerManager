@@ -1,25 +1,51 @@
 class FileExtensionParamSanitizer
 {
-  static DotlessExtensionFromPath[filePath] => regexreplace(filePath, "^.*\.")
+  static DotlessExtensionFromPath(filePath) => regexreplace(filePath, "^.*\.")
 
-  ; Prepare the extension param and redirect the call to 
-  ; the derived single-underscore method implementation
-  __Call(methodName, params)
+  ; Inject file extension param auto-sanitization into public parametrized methods
+  __New(initMethodName := "__Initialize")
   {
-    if (this.HasMethod("_" methodName, params.Length) && params.Length)
+    proto := this
+
+    ; Only convert until the least derived own custom type
+    while ((proto := proto.base) !== FileExtensionParamSanitizer.Prototype)
     {
-      params[1] := FileExtensionParamSanitizer.DotlessExtensionFromPath[params[1]]
+      for name in proto.OwnProps()
+      {
+        if (name ~= "^__" || ; Ignore double-underscore (private) methods
+            !proto.HasMethod(name) || ; Ignore non-method properties
+            proto.%name%.MinParams == 1) ; Ignore methods without explicit param(s)
+        {
+          continue
+        }
 
-      return this.%"_" methodName%(params*)
+        ; MUST do injection in a separate function call instead of directly inside the 
+        ; loop body, because only by forcing limited scope on the variable holding the 
+        ; original method's func object will each fat-arrow capture the correct original 
+        ; method, instead of the one retrieved by the very last iteration.
+        ; "Each call to the outer function [i.e. __InjectSanitization instead of __New] 
+        ; creates new closures, distinct from any previous calls" 
+        ; @ https://www.autohotkey.com/docs/v2/Functions.htm#closures
+        this.__InjectParamSanitization(proto, name)
+
+        if (strlen(initMethodName) && this.HasMethod(initMethodName))
+        {
+          this.%initMethodName%()
+        }
+      }
     }
-
-    this.__ThrowMethodError(methodName)
   }
 
-  __ThrowMethodError(methodName)
+  ; Tap into the original method call and sanitize the param before relaying the actual call
+  __InjectParamSanitization(proto, name)
   {
-    throw MethodError("Not implemented", -3, this.__MethodWithoutClassName(methodName))
-  }
+    methodDescriptor := proto.GetOwnPropDesc(name)
 
-  __MethodWithoutClassName(methodName) => regexreplace(methodName, "^.*\._?([^.]+)$", "$1")
+    originalMethod := methodDescriptor.Call
+    methodDescriptor.Call := (instance, explicitParams*) => (
+        explicitParams[1] := FileExtensionParamSanitizer
+            .DotlessExtensionFromPath(explicitParams[1]),
+        originalMethod(instance, explicitParams*))
+    proto.DefineProp(name, methodDescriptor)
+  }
 }

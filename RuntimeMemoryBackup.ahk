@@ -8,11 +8,11 @@ class RuntimeMemoryBackup extends IBackup
   ; Public methods
   ; ============================================================
 
-    _Create(uniqueBackupId, valueToBackup) => this.backup[uniqueBackupId] := valueToBackup
+    Create(uniqueBackupId, valueToBackup) => this.backup[uniqueBackupId] := valueToBackup
 
-    _Retrieve(uniqueBackupId)
+    Retrieve(uniqueBackupId)
     {
-      if (!this._IsAlreadyCreated(uniqueBackupId))
+      if (!this.IsAlreadyCreated(uniqueBackupId))
       {
         this.__ThrowNonExistent(uniqueBackupId)
       }
@@ -20,9 +20,9 @@ class RuntimeMemoryBackup extends IBackup
       return this.backup[uniqueBackupId]
     }
 
-    _Delete(uniqueBackupId)
+    Delete(uniqueBackupId)
     {
-      if (!this._IsAlreadyCreated(uniqueBackupId))
+      if (!this.IsAlreadyCreated(uniqueBackupId))
       {
         this.__ThrowNonExistent(uniqueBackupId)
       }
@@ -30,5 +30,5 @@ class RuntimeMemoryBackup extends IBackup
       this.backup.Delete(uniqueBackupId)
     }
 
-    _IsAlreadyCreated(uniqueBackupId) => this.backup.Has(uniqueBackupId)
+    IsAlreadyCreated(uniqueBackupId) => this.backup.Has(uniqueBackupId)
 }

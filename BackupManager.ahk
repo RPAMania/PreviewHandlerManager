@@ -1,8 +1,7 @@
-#include "FileExtensionParamSanitizer.ahk"
 #include "RuntimeMemoryBackup.ahk"
 #include "RegistryFileBackup.ahk"
 
-class BackupManager extends FileExtensionParamSanitizer
+class BackupManager
 {
   class BackupFormat
   {
@@ -120,7 +119,7 @@ class BackupManager extends FileExtensionParamSanitizer
   ; Public methods
   ; ============================================================
 
-    _Create(fileExtension, valueToBackup, backupFormats*)
+    Create(fileExtension, valueToBackup, backupFormats*)
     {
       for , backupFormat in backupFormats
       {
@@ -135,7 +134,7 @@ class BackupManager extends FileExtensionParamSanitizer
       }
     }
 
-    _Retrieve(fileExtension, backupFormat)
+    Retrieve(fileExtension, backupFormat)
     {
       this.__ValidateBackupFormat(backupFormat)
 
@@ -147,10 +146,10 @@ class BackupManager extends FileExtensionParamSanitizer
       return this.backups[backupFormat].Retrieve(fileExtension)
     }
 
-    _IsAlreadyCreatedForSession(fileExtension, backupFormat)
+    IsAlreadyCreatedForSession(fileExtension, backupFormat)
     {
       this.__ValidateBackupFormat(backupFormat)
-
+      
       return this.__IsInUse(backupFormat)
           && this.backups[backupFormat].IsAlreadyCreated(fileExtension)
     }
