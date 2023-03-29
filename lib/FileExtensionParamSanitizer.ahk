@@ -1,9 +1,9 @@
 class FileExtensionParamSanitizer
 {
-  static DotlessExtensionFromPath(filePath) => regexreplace(filePath, "^.*\.")
+  static DotlessExtensionFromPath(filePath) => regexreplace(filePath, "^[^.]*\.")
 
-  ; Inject file extension param auto-sanitization into public parametrized methods
-  __New(initMethodName := "__Initialize")
+  ; Inject file extension param auto-sanitization into parametrized GUI method calls
+  __New()
   {
     proto := this
 
@@ -14,7 +14,7 @@ class FileExtensionParamSanitizer
       {
         if (name ~= "^__" || ; Ignore double-underscore (private) methods
             !proto.HasMethod(name) || ; Ignore non-method properties
-            proto.%name%.MinParams == 1) ; Ignore methods without explicit param(s)
+            proto.%name%.MinParams == 1) ; Ignore methods with no explicit param(s)
         {
           continue
         }
@@ -27,11 +27,6 @@ class FileExtensionParamSanitizer
         ; creates new closures, distinct from any previous calls" 
         ; @ https://www.autohotkey.com/docs/v2/Functions.htm#closures
         this.__InjectParamSanitization(proto, name)
-
-        if (strlen(initMethodName) && this.HasMethod(initMethodName))
-        {
-          this.%initMethodName%()
-        }
       }
     }
   }

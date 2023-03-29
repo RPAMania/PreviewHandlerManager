@@ -41,7 +41,7 @@ class RegistryFileBackup extends IBackup
 
       fileappend (existingPreviewHandlerGuid ?
       (
-        "; " this.GuidToNameCallback.Bind(existingPreviewHandlerGuid)() "
+        "; " this.GuidToNameCallback.Call(existingPreviewHandlerGuid) "
         [" registryKeyName "]
         @=`"" existingPreviewHandlerGuid "`"
         "

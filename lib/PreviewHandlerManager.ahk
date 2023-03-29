@@ -6,10 +6,10 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
   Show() => this.gui.Show()
   Hide() => this.gui.Hide()
 
-  static registryKeyNameFormat := "HKEY_CLASSES_ROOT\.{1}\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}"
-      ,  noPreviewHandlerText := "None"
+  static REGISTRY_KEYNAME_FORMAT := "HKEY_CLASSES_ROOT\.{1}\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}"
+      ,  PREVIEW_HANDLER_TEXT := { NONE: "None", UNKNOWN: "Unknown: {1}" }
 
-  __Initialize()
+  __New()
   {
     static guiControlWidth := 320,
            guiButton := { w: 100, h: 24, sideMargin: 14 }
@@ -18,6 +18,8 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     {
       return
     }
+    
+    super.__New()
 
     this.__UpdatePreviewHandlersFromRegistry()
 
@@ -25,34 +27,37 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     this.chosenBackupFormats := Map(
         BackupManager.BackupFormat.RuntimeMemory, {},
         BackupManager.BackupFormat.RegistryFile, {
-            keyNameFormat: PreviewHandlerManager.registryKeyNameFormat,
+            keyNameFormat: PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT,
             fileNameFormat: "registryBackup_{1}.reg", 
             hourTimeFormat: RegistryFileBackup.HourTimeFormat.12,
-            guidToNameCallback: (guid) => this.previewHandlers[guid]
+            guidToNameCallback: (guid) => this.previewHandlers.Has(guid) 
+                ? this.previewHandlers[guid] 
+                : Format(PreviewHandlerManager.PREVIEW_HANDLER_TEXT.% guid ? "UNKNOWN" : "NONE" %, guid)
         })
     this.chosenBackupFormats.Default := BackupManager.BackupFormat.RuntimeMemory
     this.backupManager := BackupManager(this.chosenBackupFormats)
 
     ; Create GUI
     this.gui := Gui(unset, "Preview Handler Manager")
-
-    this.gui.Add("text"         , , "File extension")
-    this.gui.Add("edit"         , "vGUIFileExtension w" guiControlWidth)
+    
+    this.gui.Add("text"         , "y+10 x+10", "File extension")
+    this.gui.Add("edit"         , "vGUIFileExtension limit w" guiControlWidth)
         .OnEvent("change", (*) => this.OnChangeExtension(this.gui["GUIFileExtension"].Value))
-    this.gui.Add("text"         , , "Current preview handler associated with the extension")
-    this.gui.Add("edit"         , "vGUICurrentPreviewHandler readonly w" guiControlWidth, 
-        PreviewHandlerManager.noPreviewHandlerText)
+    this.gui.Add("groupbox"     , "vGUIGroupBox xp-10 y+10 w" (guiControlWidth + 20) " h154", "")
+    this.gui.Add("text"         , "xp+10 yp+20", "Current preview handler associated with the extension")
+    this.gui.Add("edit"         , "vGUICurrentPreviewHandler readonly "
+        "w" guiControlWidth, PreviewHandlerManager.PREVIEW_HANDLER_TEXT.NONE)
     this.gui.Add("text"         , , "Choose a new preview handler for the extension")
 
     previewHandlerNames := this.__HumanReadablePreviewHandlerNames
-    previewHandlerNames.InsertAt(1, PreviewHandlerManager.noPreviewHandlerText)
+    previewHandlerNames.InsertAt(1, PreviewHandlerManager.PREVIEW_HANDLER_TEXT.NONE)
     this.gui.Add("dropdownlist" , "vGUINewPreviewHandler w" guiControlWidth " choose1", 
         previewHandlerNames).OnEvent("change", (*) => 
             this.OnChangePreviewHandlerSelection(this.gui["GUIFileExtension"].Value))
 
-    this.gui.Add("checkbox"     , "vGUIBackup checked y+20 section", "Use backups")
-        .OnEvent("click", (*) => this.OnToggleCreateBackups(this.gui["GUIFileExtension"].Value))
-    this.gui.Add("button"       , "vGUIRestore yp-5 w" guiButton.w " h" guiButton.h 
+    ; this.gui.Add("checkbox"     , "vGUIBackup checked y+20 section", "Use backups")
+        ; .OnEvent("click", (*) => this.OnToggleCreateBackups(this.gui["GUIFileExtension"].Value))
+    this.gui.Add("button"       , "vGUIRestore y+15 w" guiButton.w " h" guiButton.h 
         " disabled", "Restore original")
         .OnEvent("click", (*) => this.OnRestorePreviewHandler(this.gui["GUIFileExtension"].Value))
     this.gui.Add("button"       , "vGUIBind default yp w" guiButton.w " h" guiButton.h " "
@@ -73,60 +78,90 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
   ; ============================================================
   ; GUI methods
   ; ============================================================
+    
+    __DelayedChangeExtension(currentRegistryPreviewHandler, timerInfo)
+    {
+      if (a_tickcount - timerInfo.countDownTickCount < timerInfo.triggerMs)
+      {
+        ; This SetTimer invocation pushed back by a later instance
+        return
+      }
+
+      ; Restore default background color
+      this.gui["GUICurrentPreviewHandler"].Opt("+background redraw")
+
+      ; Display current handler
+      if (currentRegistryPreviewHandler.isRecognized)
+      {
+        this.gui["GUICurrentPreviewHandler"].Value := currentRegistryPreviewHandler.guid
+            ? this.previewHandlers[currentRegistryPreviewHandler.guid]
+            : PreviewHandlerManager.PREVIEW_HANDLER_TEXT.NONE
+      }
+      else
+      {
+        this.gui["GUICurrentPreviewHandler"].Value 
+            := Format(PreviewHandlerManager.PREVIEW_HANDLER_TEXT.UNKNOWN, 
+                currentRegistryPreviewHandler.guid)
+      }
+    }
 
     OnChangeExtension(fileExtension)
     {
+      static timerInfo := { triggerMs: 700 }
+
+      this.gui["GUIGroupbox"].Text := fileExtension !== "" ? "." fileExtension : ""
+
       ; Validation rule: optional dot followed by some word char(s)
       isValidExtension := fileExtension ~= "^\w+$"
 
-      currentPreviewHandlerGuid := regread(
-          Format(PreviewHandlerManager.registryKeyNameFormat, fileExtension), , 0)
+      currentRegistryPreviewHandler := this.__RegistryPreviewHandler[fileExtension]
 
-      ; Display current handler
-      this.gui["GUICurrentPreviewHandler"].Value := currentPreviewHandlerGuid 
-          ? this.previewHandlers[currentPreviewHandlerGuid] 
-          : PreviewHandlerManager.noPreviewHandlerText
-
+      ; Set background color to display during simulated value retrieval delay
+      this.gui["GUICurrentPreviewHandler"].Opt("+" "background0xdddddd redraw")
+      
       ; Enable only when a valid extension and its currently active 
-      ; preview handler matches the one selected in the dropdownlist
+      ; preview handler doesn't match the one selected in the dropdownlist
       this.gui["GUIBind"].Enabled := isValidExtension 
-          && currentPreviewHandlerGuid !== this.__SelectedPreviewHandlerGuid
+          && currentRegistryPreviewHandler.guid !== this.__DropdownPreviewHandlerGuid
 
       ; Enable only when the backup feature is active and the user has typed an already
       ; backed-up extension whose currently set preview handler differs from that of the backup.
       backupFormat := this.chosenBackupFormats.Default
-      this.gui["GUIRestore"].Enabled := this.gui["GUIBackup"].Value
+      this.gui["GUIRestore"].Enabled := true ;this.gui["GUIBackup"].Value
           && this.backupManager.IsAlreadyCreatedForSession(fileExtension, backupFormat)
-          && this.backupManager.Retrieve(fileExtension, backupFormat) != currentPreviewHandlerGuid
+          && this.backupManager.Retrieve(fileExtension, backupFormat) 
+              != currentRegistryPreviewHandler.guid
+      
+      timerInfo.countDownTickCount := a_tickcount
+      settimer(this.__DelayedChangeExtension.Bind(this, 
+          currentRegistryPreviewHandler, timerInfo), -timerInfo.triggerMs)
     }
 
     OnChangePreviewHandlerSelection(fileExtension)
     {
       isValidExtension := fileExtension ~= "^\w+$"
       
-      currentPreviewHandlerGuid := regread(
-          Format(PreviewHandlerManager.registryKeyNameFormat, fileExtension), , 0)
+      currentRegistryPreviewHandler := this.__RegistryPreviewHandler[fileExtension]
 
       ; Enable only if valid extension and currently active preview 
       ; handler does not match the one selected in the dropdownlist
       this.gui["GUIBind"].Enabled := isValidExtension && 
-          currentPreviewHandlerGuid !== this.__SelectedPreviewHandlerGuid
+          currentRegistryPreviewHandler.guid !== this.__DropdownPreviewHandlerGuid
     }
 
     OnSetPreviewHandler(fileExtension)
     {
-      registryKeyName := Format(PreviewHandlerManager.registryKeyNameFormat, fileExtension)
+      registryKeyName := Format(PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT, fileExtension)
 
-      currentPreviewHandlerGuid := regread(
-          Format(PreviewHandlerManager.registryKeyNameFormat, fileExtension), , 0)
+      currentRegistryPreviewHandler := this.__RegistryPreviewHandler[fileExtension]
 
       ; Create backup if not already created
-      if (this.gui["GUIBackup"].Value)
+      ; if (this.gui["GUIBackup"].Value)
       {
-        this.__CreateBackup(fileExtension, currentPreviewHandlerGuid)
+        this.__CreateBackup(fileExtension, currentRegistryPreviewHandler.guid)
       }
 
-      selectedPreviewHandlerGuid := this.__SelectedPreviewHandlerGuid
+      selectedPreviewHandlerGuid := this.__DropdownPreviewHandlerGuid
 
       if (selectedPreviewHandlerGuid)
       {
@@ -134,11 +169,11 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
         regwrite selectedPreviewHandlerGuid, "REG_SZ", registryKeyName
         newlySetHandlerName := this.previewHandlers[selectedPreviewHandlerGuid]
       }
-      else if (currentPreviewHandlerGuid)
+      else if (currentRegistryPreviewHandler.guid)
       {
-        ; "None" selected
+        ; "None" selected and a preview handler currently assigned to the extension
         regdeletekey registryKeyName
-        newlySetHandlerName := PreviewHandlerManager.noPreviewHandlerText
+        newlySetHandlerName := PreviewHandlerManager.PREVIEW_HANDLER_TEXT.NONE
       }
 
       this.gui["GUICurrentPreviewHandler"].Value := newlySetHandlerName
@@ -146,7 +181,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       ; Enable only when the backup feature is active and the preview
       ; handler selected in the dropdownlist (i.e. the one that was
       ; just set as the active handler) differs from that in the backup
-      this.gui["GUIRestore"].Enabled := this.gui["GUIBackup"].Value 
+      this.gui["GUIRestore"].Enabled := true ;this.gui["GUIBackup"].Value 
           && (this.backupManager.Retrieve(fileExtension, this.chosenBackupFormats.Default) 
               !== selectedPreviewHandlerGuid)
       
@@ -163,12 +198,22 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     {
       originalPreviewHandlerGuid := this.__RestoreBackup(fileExtension)
       
-      this.gui["GUICurrentPreviewHandler"].Value := originalPreviewHandlerGuid 
-          ? this.previewHandlers[originalPreviewHandlerGuid]
-          : PreviewHandlerManager.noPreviewHandlerText
+      if (this.previewHandlers.Has(originalPreviewHandlerGuid))
+      {
+        originalPreviewHandlerName := this.previewHandlers[originalPreviewHandlerGuid]
+      }
+      else
+      {
+        originalPreviewHandlerName := Format(PreviewHandlerManager
+            .PREVIEW_HANDLER_TEXT.% originalPreviewHandlerGuid ? "UNKNOWN" : "NONE" %, 
+            originalPreviewHandlerGuid)
+      }
+
+      this.gui["GUICurrentPreviewHandler"].Value := originalPreviewHandlerName
 
       ; Enable only when the restored handler differs from that selected in the dropdownlist
-      this.gui["GUIBind"].Enabled := originalPreviewHandlerGuid !== this.__SelectedPreviewHandlerGuid
+      this.gui["GUIBind"].Enabled := originalPreviewHandlerGuid 
+          !== this.__DropdownPreviewHandlerGuid
 
       this.gui["GUIRestore"].Enabled := false
 
@@ -176,7 +221,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       (c
         ; Backup was other than "None"
         "Original preview handler for the extension (." fileExtension ") "
-        "has been restored back to initial '" this.previewHandlers[originalPreviewHandlerGuid] "'."
+        "has been restored back to initial '" originalPreviewHandlerName "'."
       ) :
       (c
         ; Backup was "None"
@@ -186,19 +231,18 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
     OnToggleCreateBackups(fileExtension)
     {
-      currentPreviewHandlerGuid := regread(
-          Format(PreviewHandlerManager.registryKeyNameFormat, fileExtension), , 0)
+      currentRegistryPreviewHandler := this.__RegistryPreviewHandler[fileExtension]
 
       backupFormat := this.chosenBackupFormats.Default
 
       ; Enable only when the backup feature is active, a backup has been created earlier
       ; and the currently active preview handler differs from that of the backup
-      this.gui["GUIRestore"].Enabled := this.gui["GUIBackup"].Value
+      this.gui["GUIRestore"].Enabled := true ;this.gui["GUIBackup"].Value
           && this.backupManager.IsAlreadyCreatedForSession(fileExtension, backupFormat)
           && (this.backupManager.Retrieve(fileExtension, backupFormat) 
-              !== currentPreviewHandlerGuid)
+              !== currentRegistryPreviewHandler.guid)
     }
-
+  
   ; ============================================================
   ; Private methods
   ; ============================================================
@@ -224,7 +268,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     ; Restore extension's original handler
     __RestoreBackup(fileExtension)
     {
-      registryKeyName := Format(PreviewHandlerManager.registryKeyNameFormat, fileExtension)
+      registryKeyName := Format(PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT, fileExtension)
 
       backupGuid := this.backupManager.Retrieve(fileExtension, this.chosenBackupFormats.Default)
 
@@ -290,7 +334,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
   ; ============================================================
 
     ; Preview handler GUID matching the currently selected dropdown item
-    __SelectedPreviewHandlerGuid
+    __DropdownPreviewHandlerGuid
     {
       get
       {
@@ -304,6 +348,25 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
         }
 
         return 0
+      }
+    }
+
+    ; Preview handler GUID of the given extension in the registry
+    __RegistryPreviewHandler[fileExtension]
+    {
+      get {
+        result :=
+        {
+          guid: regread(Format(PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT, fileExtension), , 0)
+        }
+
+        ; A preview handler may be set up in 
+        ; HKCR\.[fileExtension]\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
+        ; but not available in
+        ; HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PreviewHandlers
+        result.isRecognized := result.guid == 0 || this.previewHandlers.Has(result.guid)
+
+        return result
       }
     }
 
@@ -321,5 +384,10 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
         return result
       }
+    }
+
+    __Throw(err)
+    {
+      throw err
     }
 }

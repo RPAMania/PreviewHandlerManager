@@ -1,9 +1,9 @@
 /*
-  NOTES BY T ON MAR 2, 23
+  Notes by T on Mar 2, 2023:
     - Add/modify a preview handler per file extension
     - Allow creating a backup of the original handler and restoring it
       * Create an individual backup record for each modified extension
-        > However, all extension handler backups will be appended into a single registry 
+        > However, all extension handler backups will be appended into a single registry
           file if the RegistryFile backup format is active (hardcoded on by default)
       * Create a runtime memory backup
       * Create a registry file backup (.reg file, saved to the script folder)
@@ -16,33 +16,39 @@
         > E.g. HKCR\.reg\PersistentHandler == {5e941d80-bf96-11cd-b579-08002b30bfeb}, 
           which refers to HKCR\CLSID\{5e941d80-bf96-11cd-b579-08002b30bfeb} with the 
           default value "Plain Text persistent handler"
+      * Detect + allow backing up and restoring unknown preview handlers specified
+        for a file extension
     - "Use backups" checkbox
       * New backups won't not created while unticked
       * If unticked after a backup has been created, restoring the backup will be 
         disabled until ticked back on
       * Ticking/unticking while backups have already been created during a 
         session may possibly have unexpected consequences (not thoroughly tested)
+  
+  Mar 11, 2023:
+    - Fixed a crash caused by a preview handler having been specified for a file 
+      extension in the registry while being absent in 
+      HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PreviewHandlers
+  
+  Mar 29, 2023:
+    - Removed "Use backups" checkbox → the backup feature is now fixed to always remain on
+    - Modified the UI to emphasize automatic retrieval of handler info for a current extension
+      * Added a groupbox with the typed extension updating in the title
+      * Changed UI control color with a timer to signal update on changing of an extension
 
-  TODO
+  TODO:
     - Allow registering new preview handlers?
-    - Display the name of the original (backed-up) preview handler of an extension?
-    - Backup feature de/activation should probably be more persistent than a freely 
-      interactable checkbox in the main GUI, or at least more clearly defined in 
-      terms of what happens if it's enabled/disabled on the fly.
+    - Display the name of the original (backed-up) preview handler of an extension? 
 */
 
-#requires autohotkey 2.0-beta+
+#requires autohotkey v2.0
 #singleinstance ignore
-#include "lib\PreviewHandlerManager.ahk"
+#include lib
+#include PreviewHandlerManager.ahk
 
 if (!A_IsAdmin) { ;http://ahkscript.org/docs/Variables.htm#IsAdmin
   Run "*RunAs `"" A_ScriptFullPath "`""  ; Requires v1.0.92.01+
   ExitApp
-}
-
-if (!a_iscompiled)
-{
-  hotkey "F10", (*) => reload()
 }
 
 PreviewHandlerManager().Show()
