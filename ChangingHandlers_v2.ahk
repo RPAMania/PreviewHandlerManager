@@ -11,11 +11,6 @@
       HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PreviewHandlers
       * Creates new handler entries in 
         HKCR\[.ext]\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
-      * Won't take into account a PersistentHandler that, if set, will override 
-        extension's ShellEx handler
-        > E.g. HKCR\.reg\PersistentHandler == {5e941d80-bf96-11cd-b579-08002b30bfeb}, 
-          which refers to HKCR\CLSID\{5e941d80-bf96-11cd-b579-08002b30bfeb} with the 
-          default value "Plain Text persistent handler"
       * Detect + allow backing up and restoring unknown preview handlers specified
         for a file extension
     - "Use backups" checkbox
@@ -35,16 +30,19 @@
     - Modified the UI to emphasize automatic retrieval of handler info for a current extension
       * Added a groupbox with the typed extension updating in the title
       * Changed UI control color with a timer to signal update on changing of an extension
-
   TODO:
+    - Allow overriding extension's default handler (if any) specified in
+      HKCR\{HKCR\.ext\(Default) value}\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f},
+      such as HKCR\regfile\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f} for .reg files,
+      that won't be simply overridden by writing to 
+      HKCR\[.ext]\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
     - Allow registering new preview handlers?
     - Display the name of the original (backed-up) preview handler of an extension? 
 */
 
 #requires autohotkey v2.0
 #singleinstance ignore
-#include lib
-#include PreviewHandlerManager.ahk
+#include lib\PreviewHandlerManager.ahk
 
 if (!A_IsAdmin) { ;http://ahkscript.org/docs/Variables.htm#IsAdmin
   Run "*RunAs `"" A_ScriptFullPath "`""  ; Requires v1.0.92.01+
