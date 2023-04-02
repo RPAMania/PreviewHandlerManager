@@ -23,7 +23,7 @@ class FileExtensionParamSanitizer
         ; loop body, because only by forcing limited scope on the variable holding the 
         ; original method's func object will each fat-arrow capture the correct original 
         ; method, instead of the one retrieved by the very last iteration.
-        ; "Each call to the outer function [i.e. __InjectSanitization instead of __New] 
+        ; "Each call to the outer function [i.e. __InjectParamSanitization instead of __New] 
         ; creates new closures, distinct from any previous calls" 
         ; @ https://www.autohotkey.com/docs/v2/Functions.htm#closures
         this.__InjectParamSanitization(proto, name)

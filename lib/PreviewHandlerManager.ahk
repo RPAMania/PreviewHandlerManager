@@ -12,7 +12,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
   __New()
   {
     static guiControlWidth := 320,
-           guiButton := { w: 100, h: 24, sideMargin: 14 }
+          guiButton := { w: 100, h: 24, sideMargin: 14 }
 
     if (this.HasOwnProp("gui"))
     {
@@ -27,12 +27,12 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     this.chosenBackupFormats := Map(
         BackupManager.BackupFormat.RuntimeMemory, {},
         BackupManager.BackupFormat.RegistryFile, {
-            keyNameFormat: PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT,
+            keyNameFormat: this.__GetPreviewHandlerRegistryLocation,
             fileNameFormat: "registryBackup_{1}.reg", 
             hourTimeFormat: RegistryFileBackup.HourTimeFormat.12,
             guidToNameCallback: (guid) => this.previewHandlers.Has(guid) 
                 ? this.previewHandlers[guid] 
-                : Format(PreviewHandlerManager.PREVIEW_HANDLER_TEXT.% guid ? "UNKNOWN" : "NONE" %, guid)
+                : Format(PreviewHandlerManager.PREVIEW_HANDLER_TEXT.% guid != 0 ? "UNKNOWN" : "NONE" %, guid)
         })
     this.chosenBackupFormats.Default := BackupManager.BackupFormat.RuntimeMemory
     this.backupManager := BackupManager(this.chosenBackupFormats)
@@ -78,32 +78,6 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
   ; ============================================================
   ; GUI methods
   ; ============================================================
-    
-    __DelayedChangeExtension(currentRegistryPreviewHandler, timerInfo)
-    {
-      if (a_tickcount - timerInfo.countDownTickCount < timerInfo.triggerMs)
-      {
-        ; This SetTimer invocation pushed back by a later instance
-        return
-      }
-
-      ; Restore default background color
-      this.gui["GUICurrentPreviewHandler"].Opt("+background redraw")
-
-      ; Display current handler
-      if (currentRegistryPreviewHandler.isRecognized)
-      {
-        this.gui["GUICurrentPreviewHandler"].Value := currentRegistryPreviewHandler.guid
-            ? this.previewHandlers[currentRegistryPreviewHandler.guid]
-            : PreviewHandlerManager.PREVIEW_HANDLER_TEXT.NONE
-      }
-      else
-      {
-        this.gui["GUICurrentPreviewHandler"].Value 
-            := Format(PreviewHandlerManager.PREVIEW_HANDLER_TEXT.UNKNOWN, 
-                currentRegistryPreviewHandler.guid)
-      }
-    }
 
     OnChangeExtension(fileExtension)
     {
@@ -151,7 +125,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
     OnSetPreviewHandler(fileExtension)
     {
-      registryKeyName := Format(PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT, fileExtension)
+      registryKeyName := this.__GetPreviewHandlerRegistryLocation(fileExtension)
 
       currentRegistryPreviewHandler := this.__RegistryPreviewHandler[fileExtension]
 
@@ -247,6 +221,33 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
   ; Private methods
   ; ============================================================
 
+    ; Restore original bkgnd color to the Edit control and display the current preview handler
+    __DelayedChangeExtension(currentRegistryPreviewHandler, timerInfo)
+    {
+      if (a_tickcount - timerInfo.countDownTickCount < timerInfo.triggerMs)
+      {
+        ; This SetTimer invocation pushed back by a later instance
+        return
+      }
+
+      ; Restore default background color
+      this.gui["GUICurrentPreviewHandler"].Opt("+background redraw")
+
+      ; Display current handler
+      if (currentRegistryPreviewHandler.isRecognized)
+      {
+        this.gui["GUICurrentPreviewHandler"].Value := currentRegistryPreviewHandler.guid
+            ? this.previewHandlers[currentRegistryPreviewHandler.guid]
+            : PreviewHandlerManager.PREVIEW_HANDLER_TEXT.NONE
+      }
+      else
+      {
+        this.gui["GUICurrentPreviewHandler"].Value 
+            := Format(PreviewHandlerManager.PREVIEW_HANDLER_TEXT.UNKNOWN, 
+                currentRegistryPreviewHandler.guid)
+      }
+    }
+
     ; Backup the extension's original preview handler
     __CreateBackup(fileExtension, valueToBackup)
     {
@@ -268,7 +269,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     ; Restore extension's original handler
     __RestoreBackup(fileExtension)
     {
-      registryKeyName := Format(PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT, fileExtension)
+      registryKeyName := this.__GetPreviewHandlerRegistryLocation(fileExtension)
 
       backupGuid := this.backupManager.Retrieve(fileExtension, this.chosenBackupFormats.Default)
 
@@ -329,6 +330,82 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       }
     }
 
+    __GetPreviewHandlerRegistryLocation(fileExtension)
+    {
+      static WINAPI :=
+      {
+        ERROR_SUCCESS: 0,
+        HKEY_CLASSES_ROOT: 0x80000000,
+        KEY_READ: 0x20019
+      }, hKey := 0
+      , validPreviewHandlerValuePattern := "i)^\{[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}\}$"
+
+      primaryLocationFoundButInvalid := secondaryLocationFoundButInvalid := false
+
+      ; HKCR\.reg\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
+      secondaryRegistryLocation := Format(
+          PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT, fileExtension)
+
+      ; HKCR\.reg
+      delegatePrimaryKeyLocation := regexreplace(secondaryRegistryLocation, "\\ShellEx.*$")
+
+      ; regfile
+      delegatePrimaryKeyName := regread(delegatePrimaryKeyLocation, , 0)
+
+      if (delegatePrimaryKeyName)
+      {
+        ; HKCR\regfile\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
+        primaryRegistryLocation := Format(strreplace(
+            PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT, "."), delegatePrimaryKeyName)
+        
+        if (keyExists := WINAPI.ERROR_SUCCESS == DllCall("advapi32\RegOpenKeyEx", 
+            "ptr", WINAPI.HKEY_CLASSES_ROOT, 
+            "str", RegExReplace(primaryRegistryLocation, "^[A-Z_]+\\"),
+            "int", 0, 
+            "int", WINAPI.KEY_READ := 0x20019,
+            "ptr*", hKey))
+        {
+          defaultValue := regread(primaryRegistryLocation, , "")
+          
+          if (regexmatch(defaultValue, validPreviewHandlerValuePattern))
+          {
+            return primaryRegistryLocation
+          }
+
+          primaryLocationFoundButInvalid := true
+        }
+      }
+      ; HKCR\.reg\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
+      if (keyExists := WINAPI.ERROR_SUCCESS == DllCall("advapi32\RegOpenKeyEx", 
+          "ptr", WINAPI.HKEY_CLASSES_ROOT, 
+          "str", RegExReplace(secondaryRegistryLocation, "^[A-Z_]+\\"),
+          "int", 0, 
+          "int", WINAPI.KEY_READ := 0x20019,
+          "ptr*", hKey))
+      {
+        defaultValue := regread(secondaryRegistryLocation, , "")
+
+        if (regexmatch(defaultValue, validPreviewHandlerValuePattern))
+        {
+          return secondaryRegistryLocation
+        }
+
+        secondaryLocationFoundButInvalid := true
+      }
+
+      if (primaryLocationFoundButInvalid)
+      {
+        return primaryRegistryLocation
+      }
+
+      if (secondaryLocationFoundButInvalid)
+      {
+        return secondaryRegistryLocation
+      }
+
+      return 0
+    }
+  
   ; ============================================================
   ; Private dynamic properties
   ; ============================================================
@@ -357,10 +434,24 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       get {
         result :=
         {
-          guid: regread(Format(PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT, fileExtension), , 0)
+          guid: 0
         }
 
-        ; A preview handler may be set up in 
+        registryKey := this.__GetPreviewHandlerRegistryLocation(fileExtension)
+        
+        if (registryKey)
+        {
+          extensionGuid := regread(registryKey)
+
+          if (extensionGuid != "")
+          {
+            result.guid := extensionGuid
+          }
+        }
+        
+        ; A preview handler may be set up in the primary location
+        ; HKCR\{.[fileExtension] (Default) value}\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
+        ; or in the secondary location
         ; HKCR\.[fileExtension]\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
         ; but not available in
         ; HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PreviewHandlers
@@ -389,5 +480,10 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     __Throw(err)
     {
       throw err
+    }
+
+    static __GlobalExceptionHandler(error, mode)
+    {
+      msgbox "An unhandled exception occurred."
     }
 }
