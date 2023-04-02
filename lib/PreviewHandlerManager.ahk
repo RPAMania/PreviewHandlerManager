@@ -86,17 +86,33 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       this.gui["GUIGroupbox"].Text := fileExtension !== "" ? "." fileExtension : ""
 
       ; Validation rule: optional dot followed by some word char(s)
-      isValidExtension := fileExtension ~= "^\w+$"
+      isValidExtension := fileExtension ~= "^[\w(), .-]+$"
+
+      if (isValidExtension || fileExtension == "")
+      {
+        this.gui["GUIFileExtension"].Opt("+background redraw")
+      }
+      else
+      {
+        this.gui["GUIFileExtension"].Opt("+" "background0xffaaaa redraw")
+      }
 
       currentRegistryPreviewHandler := this.__RegistryPreviewHandler[fileExtension]
-
-      ; Set background color to display during simulated value retrieval delay
-      this.gui["GUICurrentPreviewHandler"].Opt("+" "background0xdddddd redraw")
       
+      if (!isValidExtension)
+      {
+        this.gui["GUIBind"].Enabled := false
+        this.gui["GUIRestore"].Enabled := false
+        return
+      }
+
       ; Enable only when a valid extension and its currently active 
       ; preview handler doesn't match the one selected in the dropdownlist
       this.gui["GUIBind"].Enabled := isValidExtension 
           && currentRegistryPreviewHandler.guid !== this.__DropdownPreviewHandlerGuid
+
+      ; Set background color to display during simulated value retrieval delay
+      this.gui["GUICurrentPreviewHandler"].Opt("+" "background0xdddddd redraw")
 
       ; Enable only when the backup feature is active and the user has typed an already
       ; backed-up extension whose currently set preview handler differs from that of the backup.
