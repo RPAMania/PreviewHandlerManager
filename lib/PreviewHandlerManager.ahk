@@ -140,7 +140,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
     OnSetPreviewHandler(fileExtension)
     {
-      registryKeyName := this.__GetPreviewHandlerRegistryLocation(fileExtension)
+      registryKeyInfo := this.__GetPreviewHandlerRegistryLocation(fileExtension)
 
       currentRegistryPreviewHandler := this.__RegistryPreviewHandler[fileExtension]
 
@@ -155,13 +155,14 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       if (selectedPreviewHandlerGuid)
       {
         ; Other than "None" selected
-        regwrite selectedPreviewHandlerGuid, "REG_SZ", registryKeyName
+        regwrite selectedPreviewHandlerGuid, "REG_SZ", 
+            registryKeyInfo.actualLocationCandidate.key
         newlySetHandlerName := this.previewHandlers[selectedPreviewHandlerGuid]
       }
       else if (currentRegistryPreviewHandler.guid)
       {
         ; "None" selected and a preview handler currently assigned to the extension
-        regdeletekey registryKeyName
+        regdeletekey registryKeyInfo.actualLocationCandidate.key
         newlySetHandlerName := PreviewHandlerManager.PREVIEW_HANDLER_TEXT.NONE
       }
 
@@ -284,7 +285,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     ; Restore extension's original handler
     __RestoreBackup(fileExtension)
     {
-      registryKeyName := this.__GetPreviewHandlerRegistryLocation(fileExtension)
+      registryKeyInfo := this.__GetPreviewHandlerRegistryLocation(fileExtension)
 
       backupGuid := this.backupManager.Retrieve(fileExtension, this.chosenBackupFormats.Default)
 
@@ -292,7 +293,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       {
         ; Extension initially had a preview handler associated with it
 
-        regwrite backupGuid, "REG_SZ", registryKeyName
+        regwrite backupGuid, "REG_SZ", registryKeyInfo.actualLocationCandidate.key
       }
       else
       {
@@ -300,16 +301,16 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
         try
         {
-          regdeletekey registryKeyName
+          regdeletekey registryKeyInfo.actualLocationCandidate.key
         }
         catch Error as e
         {
           outputdebug Format("Unexpected app state: Registry key '{1}' could't be deleted: {2}", 
-              registryKeyName, e.Message)
+              registryKeyInfo.actualLocationCandidate, e.Message)
         }
 
         ; Remove also "ShellEx" key if empty
-        shellExKey := regexreplace(registryKeyName, "\\[^\\]+$")
+        shellExKey := regexreplace(registryKeyInfo.actualLocationCandidate.key, "\\[^\\]+$")
         loop reg shellExKey, "KV"
         {
           break
@@ -355,14 +356,26 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       }, hKey := 0
       , validPreviewHandlerValuePattern := "i)^\{[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}\}$"
 
+      result :=
+      {
+        primaryLocationCandidate: "",
+        secondaryLocationCandidate: "",
+        actualLocationCandidate:
+        {
+          key: "",
+          isFound: true
+        }
+      }
+
       primaryLocationFoundButInvalid := secondaryLocationFoundButInvalid := false
 
       ; HKCR\.reg\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
-      secondaryRegistryLocation := Format(
+      result.secondaryLocationCandidate := Format(
           PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT, fileExtension)
 
       ; HKCR\.reg
-      delegatePrimaryKeyLocation := regexreplace(secondaryRegistryLocation, "\\ShellEx.*$")
+      delegatePrimaryKeyLocation := regexreplace(
+          result.secondaryLocationCandidate, "\\ShellEx.*$")
 
       ; regfile
       delegatePrimaryKeyName := regread(delegatePrimaryKeyLocation, , 0)
@@ -370,21 +383,22 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       if (delegatePrimaryKeyName)
       {
         ; HKCR\regfile\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
-        primaryRegistryLocation := Format(strreplace(
+        result.primaryLocationCandidate := Format(strreplace(
             PreviewHandlerManager.REGISTRY_KEYNAME_FORMAT, "."), delegatePrimaryKeyName)
         
         if (keyExists := WINAPI.ERROR_SUCCESS == DllCall("advapi32\RegOpenKeyEx", 
             "ptr", WINAPI.HKEY_CLASSES_ROOT, 
-            "str", RegExReplace(primaryRegistryLocation, "^[A-Z_]+\\"),
+            "str", RegExReplace(result.primaryLocationCandidate, "^[A-Z_]+\\"),
             "int", 0, 
-            "int", WINAPI.KEY_READ := 0x20019,
+            "int", WINAPI.KEY_READ,
             "ptr*", hKey))
         {
-          defaultValue := regread(primaryRegistryLocation, , "")
+          defaultValue := regread(result.primaryLocationCandidate, , "")
           
           if (regexmatch(defaultValue, validPreviewHandlerValuePattern))
           {
-            return primaryRegistryLocation
+            result.actualLocationCandidate.key := result.primaryLocationCandidate
+            return result
           }
 
           primaryLocationFoundButInvalid := true
@@ -393,32 +407,55 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       ; HKCR\.reg\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
       if (keyExists := WINAPI.ERROR_SUCCESS == DllCall("advapi32\RegOpenKeyEx", 
           "ptr", WINAPI.HKEY_CLASSES_ROOT, 
-          "str", RegExReplace(secondaryRegistryLocation, "^[A-Z_]+\\"),
+          "str", RegExReplace(result.secondaryLocationCandidate, "^[A-Z_]+\\"),
           "int", 0, 
-          "int", WINAPI.KEY_READ := 0x20019,
+          "int", WINAPI.KEY_READ,
           "ptr*", hKey))
       {
-        defaultValue := regread(secondaryRegistryLocation, , "")
+        defaultValue := regread(result.secondaryLocationCandidate, , "")
 
         if (regexmatch(defaultValue, validPreviewHandlerValuePattern))
         {
-          return secondaryRegistryLocation
+          result.actualLocationCandidate.key := result.secondaryLocationCandidate
+          return result
         }
 
         secondaryLocationFoundButInvalid := true
       }
 
+      result.actualLocationCandidate.isFound := false
+
       if (primaryLocationFoundButInvalid)
       {
-        return primaryRegistryLocation
+        result.actualLocationCandidate.key := result.primaryLocationCandidate
       }
-
-      if (secondaryLocationFoundButInvalid)
+      else if (secondaryLocationFoundButInvalid)
       {
-        return secondaryRegistryLocation
+        result.actualLocationCandidate.key := result.secondaryLocationCandidate
+      }
+      else
+      {
+        ; HKCR\regfile
+        primaryLocationRoot := regexreplace(result.primaryLocationCandidate, "\\ShellEx.*$")
+
+        if (keyExists := WINAPI.ERROR_SUCCESS == DllCall("advapi32\RegOpenKeyEx", 
+            "ptr", WINAPI.HKEY_CLASSES_ROOT, 
+            "str", RegExReplace(primaryLocationRoot, "^[A-Z_]+\\"),
+            "int", 0, 
+            "int", WINAPI.KEY_READ,
+            "ptr*", hKey))
+        {
+          ; Prioritize primary location as default
+          result.actualLocationCandidate.key := result.primaryLocationCandidate
+        }
+        else
+        {
+          ; Use secondary as default
+          result.actualLocationCandidate.key := result.secondaryLocationCandidate
+        }
       }
 
-      return 0
+      return result
     }
   
   ; ============================================================
@@ -452,11 +489,11 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
           guid: 0
         }
 
-        registryKey := this.__GetPreviewHandlerRegistryLocation(fileExtension)
+        registryKeyInfo := this.__GetPreviewHandlerRegistryLocation(fileExtension)
         
-        if (registryKey)
+        if (registryKeyInfo.actualLocationCandidate.isFound)
         {
-          extensionGuid := regread(registryKey)
+          extensionGuid := regread(registryKeyInfo.actualLocationCandidate.key)
 
           if (extensionGuid != "")
           {

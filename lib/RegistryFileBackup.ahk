@@ -8,6 +8,8 @@ class RegistryFileBackup extends IBackup
 
   __New(retrieveKeyLocationCallback, fileNameFormat, hourTimeFormat, guidToNameCallback)
   {
+    super.__New()
+    
     this.__ValidateHourTimeFormat(hourTimeFormat)
     this.__SetBackupFileName(fileNameFormat, hourTimeFormat)
 
@@ -23,7 +25,7 @@ class RegistryFileBackup extends IBackup
     {
       ; Place every backup in the same .reg file
 
-      registryKeyName := this.RetrieveKeyLocationCallback(uniqueBackupId)
+      registryKeyInfo := this.RetrieveKeyLocationCallback(uniqueBackupId)
       
       if (!fileexist(this.backupFileName))
       {
@@ -37,17 +39,17 @@ class RegistryFileBackup extends IBackup
         ), this.backupFileName, "`n"
       }
 
-      existingPreviewHandlerGuid := regread(registryKeyName, , 0)
+      existingPreviewHandlerGuid := regread(registryKeyInfo.actualLocationCandidate.key, , 0)
 
       fileappend (existingPreviewHandlerGuid !== 0 ?
       (
         "; " this.GuidToNameCallback.Call(existingPreviewHandlerGuid) "
-        [" registryKeyName "]
+        [" registryKeyInfo.actualLocationCandidate.key "]
         @=`"" existingPreviewHandlerGuid "`"
         "
       ) :
       (
-        "[-" registryKeyName "]
+        "[-" registryKeyInfo.actualLocationCandidate.key "]
         "
       )), this.backupFileName, "`n"
 

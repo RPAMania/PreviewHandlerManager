@@ -38,7 +38,8 @@ class FileExtensionParamSanitizer
 
     originalMethod := methodDescriptor.Call
     methodDescriptor.Call := (instance, explicitParams*) => (
-        explicitParams[1] := FileExtensionParamSanitizer.DotlessExtension[explicitParams[1]],
+        explicitParams[1] := strlower(
+            FileExtensionParamSanitizer.DotlessExtension[explicitParams[1]]),
         originalMethod(instance, explicitParams*))
     proto.DefineProp(name, methodDescriptor)
   }

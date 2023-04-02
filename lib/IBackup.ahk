@@ -1,4 +1,4 @@
-class IBackup
+class IBackup extends FileExtensionParamSanitizer
 {
   Create(*)            => this.__ThrowNotImplemented(a_thisfunc)
   Retrieve(*)          => this.__ThrowNotImplemented(a_thisfunc)

@@ -4,6 +4,10 @@ class RuntimeMemoryBackup extends IBackup
 {
   backup := Map()
 
+  __New()
+  {
+    super.__New()
+  }
   ; ============================================================
   ; Public methods
   ; ============================================================
