@@ -35,6 +35,8 @@
     - Implemented handling of the alternate (=primary) preview handler location in the registry,
       HKCR\{HKCR\.ext\(Default) value}\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f},
       such as HKCR\regfile\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f} for .reg files
+    - Improve validation and handling of file extension input by a user + apply custom red 
+      background color to the file extension Edit field to indicate invalid input
   
   TODO:
     - Allow registering new preview handlers?

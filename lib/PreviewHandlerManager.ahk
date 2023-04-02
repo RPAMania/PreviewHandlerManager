@@ -8,7 +8,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
   static REGISTRY_KEYNAME_FORMAT := "HKEY_CLASSES_ROOT\.{1}\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}"
       ,  PREVIEW_HANDLER_TEXT := { NONE: "None", UNKNOWN: "Unknown: {1}" }
-
+      , validFileExtensionPattern := "^[^\\/:*?`"<>|]+$"
   __New()
   {
     static guiControlWidth := 320,
@@ -85,8 +85,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
       this.gui["GUIGroupbox"].Text := fileExtension !== "" ? "." fileExtension : ""
 
-      ; Validation rule: optional dot followed by some word char(s)
-      isValidExtension := fileExtension ~= "^[\w(), .-]+$"
+      isValidExtension := fileExtension ~= PreviewHandlerManager.validFileExtensionPattern
 
       if (isValidExtension || fileExtension == "")
       {
@@ -129,7 +128,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
     OnChangePreviewHandlerSelection(fileExtension)
     {
-      isValidExtension := fileExtension ~= "^\w+$"
+      isValidExtension := fileExtension ~= PreviewHandlerManager.validFileExtensionPattern
       
       currentRegistryPreviewHandler := this.__RegistryPreviewHandler[fileExtension]
 

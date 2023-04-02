@@ -1,6 +1,6 @@
 class FileExtensionParamSanitizer
 {
-  static DotlessExtensionFromPath(filePath) => regexreplace(filePath, "^[^.]*\.")
+  static DotlessExtension[filePath] => regexreplace(filePath, "^\.")
 
   ; Inject file extension param auto-sanitization into parametrized GUI method calls
   __New()
@@ -38,8 +38,7 @@ class FileExtensionParamSanitizer
 
     originalMethod := methodDescriptor.Call
     methodDescriptor.Call := (instance, explicitParams*) => (
-        explicitParams[1] := FileExtensionParamSanitizer
-            .DotlessExtensionFromPath(explicitParams[1]),
+        explicitParams[1] := FileExtensionParamSanitizer.DotlessExtension[explicitParams[1]],
         originalMethod(instance, explicitParams*))
     proto.DefineProp(name, methodDescriptor)
   }
