@@ -31,7 +31,7 @@
       * Added a groupbox with the typed extension updating in the title
       * Changed UI control color with a timer to signal update on changing of an extension
   
-  Apr 1, 2023:
+  Apr 5, 2023:
     - Implemented handling of the alternate (=primary) preview handler location in the registry,
       HKCR\{HKCR\.ext\(Default) value}\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f},
       such as HKCR\regfile\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f} for .reg files

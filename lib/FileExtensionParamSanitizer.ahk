@@ -2,7 +2,7 @@ class FileExtensionParamSanitizer
 {
   static DotlessExtension[filePath] => regexreplace(filePath, "^\.")
 
-  ; Inject file extension param auto-sanitization into parametrized GUI method calls
+  ; Inject file extension param auto-sanitization into parametrized GUI public method calls
   __New()
   {
     proto := this
@@ -19,7 +19,7 @@ class FileExtensionParamSanitizer
           continue
         }
 
-        ; MUST do injection in a separate function call instead of directly inside the 
+        ; MUST do injection inside a separate function call instead of directly inside the 
         ; loop body, because only by forcing limited scope on the variable holding the 
         ; original method's func object will each fat-arrow capture the correct original 
         ; method, instead of the one retrieved by the very last iteration.

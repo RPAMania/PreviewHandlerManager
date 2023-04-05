@@ -8,11 +8,12 @@ class RuntimeMemoryBackup extends IBackup
   {
     super.__New()
   }
+  
   ; ============================================================
   ; Public methods
   ; ============================================================
 
-    Create(uniqueBackupId, valueToBackup) => this.backup[uniqueBackupId] := valueToBackup
+    Create(uniqueBackupId, backupPayload) => this.backup[uniqueBackupId] := backupPayload
 
     Retrieve(uniqueBackupId)
     {

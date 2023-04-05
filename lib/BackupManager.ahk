@@ -108,7 +108,7 @@ class BackupManager
         case BackupManager.BackupFormat.RegistryFile:
         {
           this.backups[BackupManager.BackupFormat.RegistryFile] := RegistryFileBackup(
-              backupOption.keyNameFormat, backupOption.fileNameFormat, 
+              backupOption.fileNameFormat, 
               backupOption.hourTimeFormat, backupOption.guidToNameCallback)
         }
       }
@@ -119,7 +119,7 @@ class BackupManager
   ; Public methods
   ; ============================================================
 
-    Create(fileExtension, valueToBackup, backupFormats*)
+    Create(fileExtension, backupPayload, backupFormats*)
     {
       for , backupFormat in backupFormats
       {
@@ -130,7 +130,7 @@ class BackupManager
           this.__ThrowNotInUse(backupFormat)
         }
 
-        this.backups[backupFormat].Create(fileExtension, valueToBackup)
+        this.backups[backupFormat].Create(fileExtension, backupPayload)
       }
     }
 

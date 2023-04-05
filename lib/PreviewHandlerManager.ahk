@@ -9,6 +9,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
   static REGISTRY_KEYNAME_FORMAT := "HKEY_CLASSES_ROOT\.{1}\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}"
       ,  PREVIEW_HANDLER_TEXT := { NONE: "None", UNKNOWN: "Unknown: {1}" }
       , validFileExtensionPattern := "^[^\\/:*?`"<>|]+$"
+  
   __New()
   {
     static guiControlWidth := 320,
@@ -27,7 +28,6 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     this.chosenBackupFormats := Map(
         BackupManager.BackupFormat.RuntimeMemory, {},
         BackupManager.BackupFormat.RegistryFile, {
-            keyNameFormat: this.__GetPreviewHandlerRegistryLocation,
             fileNameFormat: "registryBackup_{1}.reg", 
             hourTimeFormat: RegistryFileBackup.HourTimeFormat.12,
             guidToNameCallback: (guid) => this.previewHandlers.Has(guid) 
@@ -144,10 +144,13 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
       currentRegistryPreviewHandler := this.__RegistryPreviewHandler[fileExtension]
 
-      ; Create backup if not already created
       ; if (this.gui["GUIBackup"].Value)
       {
-        this.__CreateBackup(fileExtension, currentRegistryPreviewHandler.guid)
+        ; Create backup if not already created
+        this.__CreateBackup(fileExtension, {
+            guid: currentRegistryPreviewHandler.guid,
+            registryBranch: registryKeyInfo.actualLocationCandidate.branch
+        })
       }
 
       selectedPreviewHandlerGuid := this.__DropdownPreviewHandlerGuid
@@ -156,13 +159,15 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       {
         ; Other than "None" selected
         regwrite selectedPreviewHandlerGuid, "REG_SZ", 
-            registryKeyInfo.actualLocationCandidate.key
+            registryKeyInfo.actualLocationCandidate.branch
         newlySetHandlerName := this.previewHandlers[selectedPreviewHandlerGuid]
       }
       else if (currentRegistryPreviewHandler.guid)
       {
         ; "None" selected and a preview handler currently assigned to the extension
-        regdeletekey registryKeyInfo.actualLocationCandidate.key
+        regdeletekey registryKeyInfo.actualLocationCandidate.branch
+        this.__RemoveShellExIfEmpty(registryKeyInfo.actualLocationCandidate.branch)
+
         newlySetHandlerName := PreviewHandlerManager.PREVIEW_HANDLER_TEXT.NONE
       }
 
@@ -179,35 +184,35 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
       msgbox
       (
-        "Preview handler for the extension (." fileExtension ") "
+        "Preview handler for the extension ." fileExtension " "
         "has been set to '" newlySetHandlerName "'."
       )
     }
 
     OnRestorePreviewHandler(fileExtension)
     {
-      originalPreviewHandlerGuid := this.__RestoreBackup(fileExtension)
+      backupGuid := this.__RestoreBackup(fileExtension)
       
-      if (this.previewHandlers.Has(originalPreviewHandlerGuid))
+      if (this.previewHandlers.Has(backupGuid))
       {
-        originalPreviewHandlerName := this.previewHandlers[originalPreviewHandlerGuid]
+        originalPreviewHandlerName := this.previewHandlers[backupGuid]
       }
       else
       {
         originalPreviewHandlerName := Format(PreviewHandlerManager
-            .PREVIEW_HANDLER_TEXT.% originalPreviewHandlerGuid ? "UNKNOWN" : "NONE" %, 
-            originalPreviewHandlerGuid)
+            .PREVIEW_HANDLER_TEXT.% backupGuid ? "UNKNOWN" : "NONE" %, 
+            backupGuid)
       }
 
       this.gui["GUICurrentPreviewHandler"].Value := originalPreviewHandlerName
 
       ; Enable only when the restored handler differs from that selected in the dropdownlist
-      this.gui["GUIBind"].Enabled := originalPreviewHandlerGuid 
+      this.gui["GUIBind"].Enabled := backupGuid 
           !== this.__DropdownPreviewHandlerGuid
 
       this.gui["GUIRestore"].Enabled := false
 
-      msgbox (originalPreviewHandlerGuid ?
+      msgbox (backupGuid ?
       (c
         ; Backup was other than "None"
         "Original preview handler for the extension (." fileExtension ") "
@@ -227,7 +232,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
       ; Enable only when the backup feature is active, a backup has been created earlier
       ; and the currently active preview handler differs from that of the backup
-      this.gui["GUIRestore"].Enabled := true ;this.gui["GUIBackup"].Value
+      this.gui["GUIRestore"].Enabled := this.gui["GUIBackup"].Value
           && this.backupManager.IsAlreadyCreatedForSession(fileExtension, backupFormat)
           && (this.backupManager.Retrieve(fileExtension, backupFormat) 
               !== currentRegistryPreviewHandler.guid)
@@ -265,7 +270,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     }
 
     ; Backup the extension's original preview handler
-    __CreateBackup(fileExtension, valueToBackup)
+    __CreateBackup(fileExtension, backupPayload)
     {
       backupFormatNames := []
       for backupFormatName in this.chosenBackupFormats
@@ -278,22 +283,21 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
       if (backupFormatNames.Length)
       {
-        this.backupManager.Create(fileExtension, valueToBackup, backupFormatNames*)
+        this.backupManager.Create(fileExtension, backupPayload, backupFormatNames*)
       }
     }
 
     ; Restore extension's original handler
     __RestoreBackup(fileExtension)
     {
-      registryKeyInfo := this.__GetPreviewHandlerRegistryLocation(fileExtension)
+      handlerBackup := this.backupManager.Retrieve(fileExtension, 
+          this.chosenBackupFormats.Default)
 
-      backupGuid := this.backupManager.Retrieve(fileExtension, this.chosenBackupFormats.Default)
-
-      if (backupGuid)
+      if (handlerBackup.guid)
       {
         ; Extension initially had a preview handler associated with it
 
-        regwrite backupGuid, "REG_SZ", registryKeyInfo.actualLocationCandidate.key
+        regwrite handlerBackup.guid, "REG_SZ", handlerBackup.registryBranch
       }
       else
       {
@@ -301,35 +305,18 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
         try
         {
-          regdeletekey registryKeyInfo.actualLocationCandidate.key
+          regdeletekey handlerBackup.registryBranch
         }
         catch Error as e
         {
           outputdebug Format("Unexpected app state: Registry key '{1}' could't be deleted: {2}", 
-              registryKeyInfo.actualLocationCandidate, e.Message)
+              handlerBackup.registryBranch, e.Message)
         }
 
-        ; Remove also "ShellEx" key if empty
-        shellExKey := regexreplace(registryKeyInfo.actualLocationCandidate.key, "\\[^\\]+$")
-        loop reg shellExKey, "KV"
-        {
-          break
-        }
-        else
-        {
-          try
-          {
-            regdeletekey shellExKey
-          }
-          catch Error as e
-          {
-            outputdebug Format("Unexpected app state: Registry key '{1}' could't be deleted: {2}",
-                shellExKey, e.Message)
-          }
-        }
+        this.__RemoveShellExIfEmpty(handlerBackup.registryBranch)
       }
 
-      return backupGuid
+      return handlerBackup.guid
     }
 
     __UpdatePreviewHandlersFromRegistry()
@@ -346,6 +333,33 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
       }
     }
 
+    __RemoveShellExIfEmpty(branch)
+    {
+      if (!instr(branch, "ShellEx"))
+      {
+        throw Error("Invalid registry branch without ShellEx key.", , branch)
+      }
+
+      ; Remove also "ShellEx" key if empty
+      shellExKey := regexreplace(branch, "\\[^\\]+$")
+      loop reg shellExKey, "KV"
+      {
+        break
+      }
+      else
+      {
+        try
+        {
+          regdeletekey shellExKey
+        }
+        catch Error as e
+        {
+          outputdebug Format("Unexpected app state: Registry key '{1}' could't be deleted: {2}",
+              shellExKey, e.Message)
+        }
+      }
+    }
+
     __GetPreviewHandlerRegistryLocation(fileExtension)
     {
       static WINAPI :=
@@ -354,7 +368,6 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
         HKEY_CLASSES_ROOT: 0x80000000,
         KEY_READ: 0x20019
       }, hKey := 0
-      , validPreviewHandlerValuePattern := "i)^\{[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}\}$"
 
       result :=
       {
@@ -366,8 +379,6 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
           isFound: true
         }
       }
-
-      primaryLocationFoundButInvalid := secondaryLocationFoundButInvalid := false
 
       ; HKCR\.reg\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
       result.secondaryLocationCandidate := Format(
@@ -388,76 +399,62 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
         
         if (keyExists := WINAPI.ERROR_SUCCESS == DllCall("advapi32\RegOpenKeyEx", 
             "ptr", WINAPI.HKEY_CLASSES_ROOT, 
-            "str", RegExReplace(result.primaryLocationCandidate, "^[A-Z_]+\\"),
+            "str", regexreplace(result.primaryLocationCandidate, "^[A-Z_]+\\"),
             "int", 0, 
             "int", WINAPI.KEY_READ,
             "ptr*", hKey))
         {
-          defaultValue := regread(result.primaryLocationCandidate, , "")
-          
-          if (regexmatch(defaultValue, validPreviewHandlerValuePattern))
-          {
-            result.actualLocationCandidate.key := result.primaryLocationCandidate
-            return result
-          }
-
-          primaryLocationFoundButInvalid := true
+          result.actualLocationCandidate.branch := result.primaryLocationCandidate
+          return result
         }
       }
+
       ; HKCR\.reg\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
       if (keyExists := WINAPI.ERROR_SUCCESS == DllCall("advapi32\RegOpenKeyEx", 
           "ptr", WINAPI.HKEY_CLASSES_ROOT, 
-          "str", RegExReplace(result.secondaryLocationCandidate, "^[A-Z_]+\\"),
+          "str", regexreplace(result.secondaryLocationCandidate, "^[A-Z_]+\\"),
           "int", 0, 
           "int", WINAPI.KEY_READ,
           "ptr*", hKey))
       {
-        defaultValue := regread(result.secondaryLocationCandidate, , "")
-
-        if (regexmatch(defaultValue, validPreviewHandlerValuePattern))
-        {
-          result.actualLocationCandidate.key := result.secondaryLocationCandidate
-          return result
-        }
-
-        secondaryLocationFoundButInvalid := true
+        result.actualLocationCandidate.branch := result.secondaryLocationCandidate
+        return result
       }
 
       result.actualLocationCandidate.isFound := false
+     
+      ; HKCR\regfile
+      primaryLocationRoot := regexreplace(result.primaryLocationCandidate, "\\ShellEx.*$")
 
-      if (primaryLocationFoundButInvalid)
+      if (keyExists := WINAPI.ERROR_SUCCESS == DllCall("advapi32\RegOpenKeyEx", 
+          "ptr", WINAPI.HKEY_CLASSES_ROOT, 
+          "str", regexreplace(primaryLocationRoot, "^[A-Z_]+\\"),
+          "int", 0, 
+          "int", WINAPI.KEY_READ,
+          "ptr*", hKey))
       {
-        result.actualLocationCandidate.key := result.primaryLocationCandidate
-      }
-      else if (secondaryLocationFoundButInvalid)
-      {
-        result.actualLocationCandidate.key := result.secondaryLocationCandidate
+        ; Prioritize primary location as default
+        result.actualLocationCandidate.branch := result.primaryLocationCandidate
       }
       else
       {
-        ; HKCR\regfile
-        primaryLocationRoot := regexreplace(result.primaryLocationCandidate, "\\ShellEx.*$")
-
-        if (keyExists := WINAPI.ERROR_SUCCESS == DllCall("advapi32\RegOpenKeyEx", 
-            "ptr", WINAPI.HKEY_CLASSES_ROOT, 
-            "str", RegExReplace(primaryLocationRoot, "^[A-Z_]+\\"),
-            "int", 0, 
-            "int", WINAPI.KEY_READ,
-            "ptr*", hKey))
-        {
-          ; Prioritize primary location as default
-          result.actualLocationCandidate.key := result.primaryLocationCandidate
-        }
-        else
-        {
-          ; Use secondary as default
-          result.actualLocationCandidate.key := result.secondaryLocationCandidate
-        }
+        ; Use secondary as default
+        result.actualLocationCandidate.branch := result.secondaryLocationCandidate
       }
 
       return result
     }
-  
+
+    __Throw(err)
+    {
+      throw err
+    }
+
+    static __GlobalExceptionHandler(*) ;(error, mode)
+    {
+      msgbox "An unhandled exception occurred."
+    }
+
   ; ============================================================
   ; Private dynamic properties
   ; ============================================================
@@ -483,7 +480,11 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     ; Preview handler GUID of the given extension in the registry
     __RegistryPreviewHandler[fileExtension]
     {
-      get {
+      get
+      {
+        ; static validPreviewHandlerValuePattern 
+            ; := "i)^\{[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}\}$"
+        
         result :=
         {
           guid: 0
@@ -493,7 +494,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
         
         if (registryKeyInfo.actualLocationCandidate.isFound)
         {
-          extensionGuid := regread(registryKeyInfo.actualLocationCandidate.key)
+          extensionGuid := regread(registryKeyInfo.actualLocationCandidate.branch, , "")
 
           if (extensionGuid != "")
           {
@@ -505,7 +506,7 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
         ; HKCR\{.[fileExtension] (Default) value}\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
         ; or in the secondary location
         ; HKCR\.[fileExtension]\ShellEx\{8895b1c6-b41f-4c1c-a562-0d564250836f}
-        ; but not available in
+        ; while, for whatever reason, not actually matching any available handler defined in
         ; HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\PreviewHandlers
         result.isRecognized := result.guid == 0 || this.previewHandlers.Has(result.guid)
 
@@ -527,15 +528,5 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
 
         return result
       }
-    }
-
-    __Throw(err)
-    {
-      throw err
-    }
-
-    static __GlobalExceptionHandler(error, mode)
-    {
-      msgbox "An unhandled exception occurred."
     }
 }
