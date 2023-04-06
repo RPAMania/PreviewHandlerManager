@@ -453,6 +453,8 @@ class PreviewHandlerManager extends FileExtensionParamSanitizer
     static __GlobalExceptionHandler(*) ;(error, mode)
     {
       msgbox "An unhandled exception occurred."
+      
+      return 1
     }
 
   ; ============================================================
