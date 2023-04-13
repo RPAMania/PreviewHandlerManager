@@ -1,5 +1,5 @@
-#include "RuntimeMemoryBackup.ahk"
-#include "RegistryFileBackup.ahk"
+#include RuntimeMemoryBackup.ahk
+#include RegistryFileBackup.ahk
 
 class BackupManager
 {
@@ -119,65 +119,65 @@ class BackupManager
   ; Public methods
   ; ============================================================
 
-    Create(fileExtension, backupPayload, backupFormats*)
-    {
-      for , backupFormat in backupFormats
-      {
-        this.__ValidateBackupFormat(backupFormat)
-        
-        if (!this.__IsInUse(backupFormat))
-        {
-          this.__ThrowNotInUse(backupFormat)
-        }
-
-        this.backups[backupFormat].Create(fileExtension, backupPayload)
-      }
-    }
-
-    Retrieve(fileExtension, backupFormat)
+  Create(fileExtension, backupPayload, backupFormats*)
+  {
+    for , backupFormat in backupFormats
     {
       this.__ValidateBackupFormat(backupFormat)
-
+      
       if (!this.__IsInUse(backupFormat))
       {
         this.__ThrowNotInUse(backupFormat)
       }
 
-      return this.backups[backupFormat].Retrieve(fileExtension)
+      this.backups[backupFormat].Create(fileExtension, backupPayload)
+    }
+  }
+
+  Retrieve(fileExtension, backupFormat)
+  {
+    this.__ValidateBackupFormat(backupFormat)
+
+    if (!this.__IsInUse(backupFormat))
+    {
+      this.__ThrowNotInUse(backupFormat)
     }
 
-    IsAlreadyCreatedForSession(fileExtension, backupFormat)
-    {
-      this.__ValidateBackupFormat(backupFormat)
-      
-      return this.__IsInUse(backupFormat)
-          && this.backups[backupFormat].IsAlreadyCreated(fileExtension)
-    }
+    return this.backups[backupFormat].Retrieve(fileExtension)
+  }
+
+  IsAlreadyCreatedForSession(fileExtension, backupFormat)
+  {
+    this.__ValidateBackupFormat(backupFormat)
+    
+    return this.__IsInUse(backupFormat)
+        && this.backups[backupFormat].IsAlreadyCreated(fileExtension)
+  }
 
   ; ============================================================
   ; Private methods
   ; ============================================================
   
-    __IsInUse(backupFormat)
-    {
-      return this.backups.Has(backupFormat)
-    }
+  __IsInUse(backupFormat)
+  {
+    return this.backups.Has(backupFormat)
+  }
 
-    __ValidateBackupFormat(backupFormat)
+  __ValidateBackupFormat(backupFormat)
+  {
+    for supportedBackupFormatName in BackupManager.BackupFormat
     {
-      for supportedBackupFormatName in BackupManager.BackupFormat
+      if (backupFormat == supportedBackupFormatName)
       {
-        if (backupFormat == supportedBackupFormatName)
-        {
-          return
-        }
+        return
       }
-
-      throw ValueError("Unknown BackupFormat value.", -2, backupFormat)
     }
 
-    __ThrowNotInUse(backupFormat)
-    {
-      throw UnsetItemError(Format("Backup format {1} not in use.", backupFormat), -2)
-    }
+    throw ValueError("Unknown BackupFormat value.", -2, backupFormat)
+  }
+
+  __ThrowNotInUse(backupFormat)
+  {
+    throw UnsetItemError(Format("Backup format {1} not in use.", backupFormat), -2)
+  }
 }

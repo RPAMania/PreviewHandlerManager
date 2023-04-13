@@ -1,3 +1,5 @@
+#include FileExtensionParamSanitizer.ahk
+
 class IBackup extends FileExtensionParamSanitizer
 {
   Create(*)            => this.__ThrowNotImplemented(a_thisfunc)

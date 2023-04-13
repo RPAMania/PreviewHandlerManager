@@ -1,4 +1,4 @@
-#include "IBackup.ahk"
+#include IBackup.ahk
 
 class RuntimeMemoryBackup extends IBackup
 {
@@ -8,32 +8,32 @@ class RuntimeMemoryBackup extends IBackup
   {
     super.__New()
   }
-  
+
   ; ============================================================
   ; Public methods
   ; ============================================================
 
-    Create(uniqueBackupId, backupPayload) => this.backup[uniqueBackupId] := backupPayload
+  Create(uniqueBackupId, backupPayload) => this.backup[uniqueBackupId] := backupPayload
 
-    Retrieve(uniqueBackupId)
+  Retrieve(uniqueBackupId)
+  {
+    if (!this.IsAlreadyCreated(uniqueBackupId))
     {
-      if (!this.IsAlreadyCreated(uniqueBackupId))
-      {
-        this.__ThrowNonExistent(uniqueBackupId)
-      }
-
-      return this.backup[uniqueBackupId]
+      this.__ThrowNonExistent(uniqueBackupId)
     }
 
-    Delete(uniqueBackupId)
-    {
-      if (!this.IsAlreadyCreated(uniqueBackupId))
-      {
-        this.__ThrowNonExistent(uniqueBackupId)
-      }
+    return this.backup[uniqueBackupId]
+  }
 
-      this.backup.Delete(uniqueBackupId)
+  Delete(uniqueBackupId)
+  {
+    if (!this.IsAlreadyCreated(uniqueBackupId))
+    {
+      this.__ThrowNonExistent(uniqueBackupId)
     }
 
-    IsAlreadyCreated(uniqueBackupId) => this.backup.Has(uniqueBackupId)
+    this.backup.Delete(uniqueBackupId)
+  }
+
+  IsAlreadyCreated(uniqueBackupId) => this.backup.Has(uniqueBackupId)
 }

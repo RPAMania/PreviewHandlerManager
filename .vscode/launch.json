@@ -8,7 +8,7 @@
       "type": "autohotkey",
       "request": "launch",
       "name": "AutoHotkey2 Debugger",
-      "program": "${workspaceFolder}\\ChangingHandlers_v2.ahk",
+      "program": "${workspaceFolder}\\PreviewHandlerManager.ahk",
       "port": "9002-9010",
       // "stopOnEntry": true
     }
